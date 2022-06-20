@@ -1,0 +1,145 @@
+theory Sake_ia
+begin
+
+builtins: hashing
+functions: kdf/2, opr/2, vfy/3, mac/2, true/0
+equations: vfy(k, m, mac(k, m)) = true
+
+restriction Equality:
+  "All x y #i. Eq(x,y) @i ==> x = y"
+
+rule setup:
+[ Fr(~k), Fr(~l) ]
+--[]->
+[ AgStI($I, $R, <h(~k),~l,h(~l),h(h(~l))>), AgStR($R,<~k,~l>) ]
+
+rule I1:
+let
+  m1 = <$I, ~ri>
+in
+[ AgStI($I, $R, <h(~k),~l,h(~l),h(h(~l))>), Fr(~ri) ]
+--[ I1($I, $R, m1)
+  , KeyI1($I, h(~k)) 
+  ]->
+[ AgStI1($I, $R, m1, ~ri, <h(~k),~l,h(~l),h(h(~l))>),
+  Out(m1) ]
+
+rule R2:
+let
+  m1 = <i, ri>
+  tr = mac(~l, <$R, i, ~rr, ri>)
+  mr = <~rr, tr>
+in
+[ AgStR($R,<~k,~l>), In(m1), Fr(~rr) ]
+--[ R2(i, $R, m1, mr)
+  , KeyR2($R, ~k)
+  ]->
+[ AgStR2(i, $R, m1, mr, ri, ~rr, <~k,~l>),
+  Out(mr) ]
+  
+rule I3:
+let
+  mr = <rr, tr>
+  ep = 1
+  ti = mac(~l, <~ep, $I, $R, ~ri, rr>)
+  mi = <~ep, ti>
+in
+[ AgStI1($I, $R, m1, ~ri, <h(~k),~l,h(~l),h(h(~l))>), In(mr), Fr(~ep) ]
+--[ I3($I, $R, m1, mr, mi)
+  , KeyI3($I, h(~k))
+  , Eq(vfy(~l, <$R, $I, rr, ~ri>, tr), true)
+  ]->
+[ AgStI3($I, $R, m1, mr, mi, ~ri, rr, ~ep, <h(~k),~l,h(~l),h(h(~l))>),
+  Out(mi) ]
+
+rule R4:
+let
+  sk = kdf(h(~k), opr(ri, ~rr))
+  mi = <ep, ti>
+  trr = mac(h(h(~l)), <~rr, ri>)
+in
+[ AgStR2(i, $R, m1, mr, ri, ~rr, <~k,~l>), In(mi) ]
+--[ R4(i, $R, m1, mr, mi, trr)
+  , KeyR4($R, ~k)
+  , Eq(vfy(~l, <ep, i, $R, ri, ~rr>, ti), true)
+  ]->
+[ AgStR4(i, $R, m1, mr, mi, trr, ri, ~rr, <h(h(~k)),h(h(~l))>, sk),
+  Out(trr) ]
+  
+rule I5:
+let
+  tii = mac(h(h(~l)), <~ri, rr>)
+  sk = kdf(h(~k), opr(ri, ~rr))
+in
+[ AgStI3($I, $R, m1, mr, mi, ~ri, rr, ~ep, <h(~k),~l,h(~l),h(h(~l))>), In(trr) ]
+--[ I5($I, $R, m1, mr, mi, trr, tii)
+  , Eq(vfy(h(h(~l)), <rr, ~ri>, trr), true)
+  , AcceptsI($I, $R, sk, <~ri, rr>)
+  , EvolvedI($I, $R, <h(h(~k)),h(~l),h(h(~l)),h(h(h(~l)))>)
+  ]->
+[ Out(tii) ]
+
+rule R6:
+[ AgStR4(i, $R, m1, mr, mi, trr, ri, ~rr, <h(h(~k)),h(h(~l))>, sk), In(tii) ]
+--[ R6(i, $R, m1, mr, mi, trr, tii)
+  , Eq(vfy(h(h(~l)), <ri, ~rr>, tii), true)
+  , AcceptsR(i, $R, sk, <ri, ~rr>)
+  , EvolvedR($R, <h(h(~k)),h(h(~l))>)
+  ]->
+[ ]
+  
+lemma executable:
+exists-trace
+"(Ex i r m1 mr mi trr tii #i #j #k #l #m #n.
+   I1(i, r, m1)@i
+ & R2(i, r, m1, mr)@j & #i < #j
+ & I3(i, r, m1, mr, mi)@k & #j < #k
+ & R4(i, r, m1, mr, mi, trr)@l & #k < #l
+ & I5(i, r, m1, mr, mi, trr, tii)@m & #l < #m
+ & R6(i, r, m1, mr, mi, trr, tii)@n & #m < #n
+ )"
+
+lemma skPFSI:
+all-traces
+"All i r sk ri rr #i.
+  AcceptsI(i, r, sk, <ri, rr>)@i ==>
+  (not (Ex #j. K(sk)@j))
+      | (Ex k #z. KeyI1(i, k)@z & K(k)@z & z < i)
+      | (Ex k #z. KeyR2(r, k)@z & K(k)@z & z < i)
+      | (Ex k #z. KeyI3(i, k)@z & K(k)@z & z < i)
+      | (Ex k #z. KeyR4(r, k)@z & K(k)@z & z < i)
+ "
+lemma skPFSR:
+all-traces
+"All i r sk ri rr #i.
+  AcceptsR(i, r, sk, <ri, rr>)@i ==>
+  (not (Ex #j. K(sk)@j))
+      | (Ex k #z. KeyI1(i, k)@z & K(k)@z & z < i)
+      | (Ex k #z. KeyR2(r, k)@z & K(k)@z & z < i)
+      | (Ex k #z. KeyI3(i, k)@z & K(k)@z & z < i)
+      | (Ex k #z. KeyR4(r, k)@z & K(k)@z & z < i)
+ "
+ 
+lemma sessionKeySecrecyI:
+all-traces
+"All i r sk ri rr #i.
+  AcceptsI(i, r, sk, <ri, rr>)@i ==>
+  not (Ex #j. K(sk)@j)" 
+
+lemma sessionKeySecrecyR:
+all-traces
+"All i r sk ri rr #i.
+  AcceptsR(i, r, sk, <ri, rr>)@i ==>
+  not (Ex #j. K(sk)@j)" 
+
+lemma SyncLossConcurrent:
+exists-trace
+"Ex i r k l m n o p #i #j.
+  EvolvedI(i, r, <k, l, m, n>)@i 
+  & EvolvedR(r, <o, p>)@j 
+  & not((k = o) & (m = p))"
+
+
+
+
+end 
